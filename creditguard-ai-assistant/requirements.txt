@@ -1,0 +1,40 @@
+# 🏦 CreditGuard AI Assistant - Python Dependencies
+# 👨‍�� Steven Uba - Azure Digital Solution Engineer - Data and AI
+
+# Azure AI Services
+azure-ai-foundry>=1.0.0
+azure-openai>=1.0.0
+azure-search-documents>=11.4.0
+azure-cosmos>=4.5.0
+azure-keyvault-secrets>=4.7.0
+azure-storage-blob>=12.19.0
+
+# Semantic Kernel
+semantic-kernel>=1.0.0
+
+# Azure Cognitive Services
+azure-cognitiveservices-speech>=1.34.0
+
+# Data Processing
+pandas>=2.1.0
+numpy>=1.24.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+
+# Development & Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+jupyter>=1.0.0
+black>=23.0.0
+flake8>=6.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Web frameworks (para APIs futuras)
+fastapi>=0.104.0
+uvicorn>=0.24.0
