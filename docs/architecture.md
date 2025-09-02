@@ -535,6 +535,5 @@ graph LR
 
 ## 🏷️ Ubicación del Archivo
 
-**📍 Guardar como:** `docs/architecture.md`
 
 Este diagrama proporciona una visión completa de cómo todos los componentes del sistema CreditGuard AI Assistant se conectan e interactúan, facilitando la comprensión tanto para estudiantes como para implementadores del sistema.
