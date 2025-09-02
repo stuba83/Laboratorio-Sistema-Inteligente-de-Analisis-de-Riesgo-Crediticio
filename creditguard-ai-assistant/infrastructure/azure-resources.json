@@ -1,0 +1,617 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "🏦 CreditGuard AI Assistant - Complete Azure Infrastructure",
+    "author": "Steven Uba - Azure Digital Solution Engineer - Data and AI",
+    "version": "1.0.0"
+  },
+  "parameters": {
+    "projectName": {
+      "type": "string",
+      "defaultValue": "creditguard",
+      "metadata": {
+        "description": "Nombre base del proyecto (se usa como prefijo)"
+      },
+      "minLength": 3,
+      "maxLength": 10
+    },
+    "environment": {
+      "type": "string",
+      "defaultValue": "dev",
+      "allowedValues": [
+        "dev",
+        "test", 
+        "prod"
+      ],
+      "metadata": {
+        "description": "Ambiente de deployment"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Ubicación de los recursos"
+      }
+    },
+    "administratorLogin": {
+      "type": "string",
+      "defaultValue": "adminuser",
+      "metadata": {
+        "description": "Usuario administrador para la VM"
+      }
+    },
+    "administratorPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Password para el usuario administrador"
+      }
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4s_v3",
+      "allowedValues": [
+        "Standard_D2s_v3",
+        "Standard_D4s_v3",
+        "Standard_D8s_v3"
+      ],
+      "metadata": {
+        "description": "Tamaño de la VM de desarrollo"
+      }
+    },
+    "ownerName": {
+      "type": "string",
+      "defaultValue": "[concat('User-', uniqueString(subscription().subscriptionId, resourceGroup().id))]",
+      "metadata": {
+        "description": "Nombre del propietario de los recursos (estudiante/desarrollador)"
+      }
+    },
+    "instructorName": {
+      "type": "string", 
+      "defaultValue": "Steven Uba - Azure Digital Solution Engineer",
+      "metadata": {
+        "description": "Nombre del instructor del laboratorio"
+      }
+    }
+  },
+  "variables": {
+    "uniqueId": "[substring(uniqueString(resourceGroup().id), 0, 6)]",
+    "namingPrefix": "[concat(parameters('projectName'), '-', parameters('environment'))]",
+    
+    "// 🏷️ Standard Tags": "",
+    "standardTags": {
+      "Project": "CreditGuard AI Assistant",
+      "Environment": "[parameters('environment')]", 
+      "Owner": "[parameters('ownerName')]",
+      "Instructor": "[parameters('instructorName')]",
+      "LabType": "Azure AI Services Training",
+      "CreatedBy": "ARM Template"
+    },
+    
+    "// 🌐 Networking": "",
+    "vnetName": "[concat(variables('namingPrefix'), '-vnet')]",
+    "subnetName": "default",
+    "nsgName": "[concat(variables('namingPrefix'), '-nsg')]",
+    "publicIpName": "[concat(variables('namingPrefix'), '-pip')]",
+    "nicName": "[concat(variables('namingPrefix'), '-nic')]",
+    
+    "// 💻 Virtual Machine": "",
+    "vmName": "[concat(variables('namingPrefix'), '-vm')]",
+    "osDiskName": "[concat(variables('namingPrefix'), '-osdisk')]",
+    
+    "// 🤖 AI Services": "",
+    "openAIAccountName": "[concat(variables('namingPrefix'), '-openai-', variables('uniqueId'))]",
+    "searchServiceName": "[concat(variables('namingPrefix'), '-search-', variables('uniqueId'))]",
+    "cognitiveServicesName": "[concat(variables('namingPrefix'), '-cogsvc-', variables('uniqueId'))]",
+    
+    "// 🗄️ Data Services": "",
+    "cosmosAccountName": "[concat(variables('namingPrefix'), '-cosmos-', variables('uniqueId'))]",
+    "storageAccountName": "[concat(replace(variables('namingPrefix'), '-', ''), 'st', variables('uniqueId'))]",
+    
+    "// 🔒 Security": "",
+    "keyVaultName": "[concat(variables('namingPrefix'), '-kv-', variables('uniqueId'))]",
+    
+    "// 📊 Monitoring": "",
+    "workspaceName": "[concat(variables('namingPrefix'), '-workspace')]",
+    "appInsightsName": "[concat(variables('namingPrefix'), '-appinsights')]"
+  },
+  "resources": [
+    {
+      "// 🌐 === NETWORKING RESOURCES ===": "",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('nsgName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "AllowRDP",
+            "properties": {
+              "priority": 1000,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "3389"
+            }
+          },
+          {
+            "name": "AllowSSH",
+            "properties": {
+              "priority": 1001,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "22"
+            }
+          },
+          {
+            "name": "AllowHTTPS",
+            "properties": {
+              "priority": 1002,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "443"
+            }
+          },
+          {
+            "name": "AllowJupyter",
+            "properties": {
+              "priority": 1003,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "8888"
+            }
+          }
+        ]
+      },
+      "tags": "[variables('standardTags')]"
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('vnetName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+      ],
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.0.0/16"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('subnetName')]",
+            "properties": {
+              "addressPrefix": "10.0.0.0/24",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+              }
+            }
+          }
+        ]
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('publicIpName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static",
+        "dnsSettings": {
+          "domainNameLabel": "[concat(variables('namingPrefix'), '-vm-', variables('uniqueId'))]"
+        }
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('nicName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+              },
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))]"
+              }
+            }
+          }
+        ]
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "// 💻 === VIRTUAL MACHINE ===": "",
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2023-03-01",
+      "name": "[variables('vmName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[variables('vmName')]",
+          "adminUsername": "[parameters('administratorLogin')]",
+          "adminPassword": "[parameters('administratorPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "microsoft-dsvm",
+            "offer": "ubuntu-2004",
+            "sku": "2004-gen2",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "[variables('osDiskName')]",
+            "caching": "ReadWrite",
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+            }
+          ]
+        }
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "// 🤖 === AI SERVICES ===": "",
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('openAIAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "S0"
+      },
+      "kind": "OpenAI",
+      "properties": {
+        "customSubDomainName": "[variables('openAIAccountName')]",
+        "networkAcls": {
+          "defaultAction": "Allow"
+        },
+        "publicNetworkAccess": "Enabled"
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('cognitiveServicesName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "S0"
+      },
+      "kind": "CognitiveServices",
+      "properties": {
+        "networkAcls": {
+          "defaultAction": "Allow"
+        },
+        "publicNetworkAccess": "Enabled"
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "type": "Microsoft.Search/searchServices",
+      "apiVersion": "2023-11-01",
+      "name": "[variables('searchServiceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "standard"
+      },
+      "properties": {
+        "replicaCount": 1,
+        "partitionCount": 1,
+        "hostingMode": "default",
+        "publicNetworkAccess": "enabled",
+        "networkRuleSet": {
+          "ipRules": []
+        }
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "// 🗄️ === DATA SERVICES ===": "",
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2023-04-15",
+      "name": "[variables('cosmosAccountName')]",
+      "location": "[parameters('location')]",
+      "kind": "GlobalDocumentDB",
+      "properties": {
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session"
+        },
+        "locations": [
+          {
+            "locationName": "[parameters('location')]",
+            "failoverPriority": 0,
+            "isZoneRedundant": false
+          }
+        ],
+        "databaseAccountOfferType": "Standard",
+        "enableAutomaticFailover": false,
+        "enableMultipleWriteLocations": false,
+        "capabilities": [],
+        "publicNetworkAccess": "Enabled",
+        "networkAclBypass": "None"
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "defaultToOAuthAuthentication": false,
+        "allowCrossTenantReplication": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": true,
+        "allowSharedKeyAccess": true,
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "virtualNetworkRules": [],
+          "ipRules": [],
+          "defaultAction": "Allow"
+        },
+        "supportsHttpsTrafficOnly": true,
+        "encryption": {
+          "services": {
+            "file": {
+              "keyType": "Account",
+              "enabled": true
+            },
+            "blob": {
+              "keyType": "Account",
+              "enabled": true
+            }
+          },
+          "keySource": "Microsoft.Storage"
+        },
+        "accessTier": "Hot"
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "// 🔒 === SECURITY ===": "",
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-02-01",
+      "name": "[variables('keyVaultName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "family": "A",
+          "name": "standard"
+        },
+        "tenantId": "[subscription().tenantId]",
+        "accessPolicies": [],
+        "enabledForDeployment": false,
+        "enabledForDiskEncryption": false,
+        "enabledForTemplateDeployment": false,
+        "enableSoftDelete": true,
+        "softDeleteRetentionInDays": 90,
+        "enableRbacAuthorization": true,
+        "vaultUri": "[concat('https://', variables('keyVaultName'), '.vault.azure.net/')]",
+        "provisioningState": "Succeeded",
+        "publicNetworkAccess": "Enabled"
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "// 📊 === MONITORING ===": "",
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('workspaceName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30,
+        "features": {
+          "searchVersion": 1,
+          "legacy": 0,
+          "enableLogAccessUsingOnlyResourcePermissions": true
+        }
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('appInsightsName')]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('workspaceName'))]"
+      ],
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('workspaceName'))]"
+      },
+      "tags": {
+        "Project": "CreditGuard AI Assistant",
+        "Environment": "[parameters('environment')]",
+        "Owner": "Steven Uba"
+      }
+    }
+  ],
+  "outputs": {
+    "// 🌐 Networking": "",
+    "vmPublicIP": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))).ipAddress]"
+    },
+    "vmFQDN": {
+      "type": "string", 
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))).dnsSettings.fqdn]"
+    },
+    
+    "// 🤖 AI Services": "",
+    "openAIEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', variables('openAIAccountName'))).endpoint]"
+    },
+    "openAIKey": {
+      "type": "string",
+      "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', variables('openAIAccountName')), '2023-05-01').key1]"
+    },
+    "cognitiveServicesEndpoint": {
+      "type": "string", 
+      "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', variables('cognitiveServicesName'))).endpoint]"
+    },
+    "cognitiveServicesKey": {
+      "type": "string",
+      "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', variables('cognitiveServicesName')), '2023-05-01').key1]"
+    },
+    "searchServiceEndpoint": {
+      "type": "string",
+      "value": "[concat('https://', variables('searchServiceName'), '.search.windows.net')]"
+    },
+    "searchServiceKey": {
+      "type": "string",
+      "value": "[listAdminKeys(resourceId('Microsoft.Search/searchServices', variables('searchServiceName')), '2023-11-01').primaryKey]"
+    },
+    
+    "// 🗄️ Data Services": "",
+    "cosmosDBEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName'))).documentEndpoint]"
+    },
+    "cosmosDBKey": {
+      "type": "string",
+      "value": "[listKeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName')), '2023-04-15').primaryMasterKey]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "value": "[variables('storageAccountName')]"
+    },
+    "storageAccountKey": {
+      "type": "string",
+      "value": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value]"
+    },
+    
+    "// 🔒 Security": "",
+    "keyVaultUri": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))).vaultUri]"
+    },
+    
+    "// 📊 Monitoring": "",
+    "appInsightsInstrumentationKey": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).InstrumentationKey]"
+    },
+    "appInsightsConnectionString": {
+      "type": "string", 
+      "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName'))).ConnectionString]"
+    },
+    
+    "// 📋 Summary": "",
+    "deploymentSummary": {
+      "type": "object",
+      "value": {
+        "projectName": "[parameters('projectName')]",
+        "environment": "[parameters('environment')]",
+        "location": "[parameters('location')]",
+        "resourceGroupName": "[resourceGroup().name]",
+        "deploymentTime": "[utcNow()]",
+        "vmAccessInfo": {
+          "publicIP": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))).ipAddress]",
+          "fqdn": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))).dnsSettings.fqdn]",
+          "adminUsername": "[parameters('administratorLogin')]",
+          "sshCommand": "[concat('ssh ', parameters('administratorLogin'), '@', reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))).ipAddress)]"
+        }
+      }
+    }
+  }
+}
